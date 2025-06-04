@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量子攻击信号检测分析系统</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px 0;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 2.2em;
+        }
+        
+        .subtitle {
+            font-style: italic;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+        
+        .chart-container {
+            background-color: white;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .chart-container:hover {
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .chart-title {
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 15px 0;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 0 15px 10px 0;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 8px;
+            border-radius: 3px;
+        }
+        
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 5px;
+            pointer-events: none;
+            font-size: 14px;
+            z-index: 100;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        
+        select, button {
+            padding: 8px 15px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            background-color: white;
+            cursor: pointer;
+        }
+        
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        .attack-info {
+            background-color: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        .attack-info h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>量子攻击信号检测分析系统</h1>
+            <div class="subtitle">量子通信安全研究实验室 · 信号分析与攻击分类</div>
+        </header>
+        
+        <div class="attack-info">
+            <h3>攻击类型说明</h3>
+            <p>本系统检测六类量子攻击信号：抖动攻击（时间域扰动）、波长攻击（频域干扰）、校准攻击（系统参数篡改）、饱和攻击（探测器过载）、法拉第镜攻击（偏振态操控）和特洛伊木马攻击（隐蔽后门植入）。</p>
+        </div>
+        
+        <div class="controls">
+            <div>
+                <label for="data-select">数据集: </label>
+                <select id="data-select">
+                    <option value="simulated">模拟数据</option>
+                    <option value="lab">实验室数据</option>
+                    <option value="field">现场数据</option>
+                </select>
+            </div>
+            <button id="refresh-btn">刷新数据</button>
+        </div>
+        
+        <div class="grid">
+            <div class="chart-container full-width">
+                <h2 class="chart-title">量子信号波形图</h2>
+                <div id="waveform-chart"></div>
+                <div class="legend" id="waveform-legend"></div>
+            </div>
+            
+            <div class="chart-container">
+                <h2 class="chart-title">攻击特征折线图</h2>
+                <canvas id="line-chart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h2 class="chart-title">信号参数曲线图</h2>
+                <canvas id="curve-chart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h2 class="chart-title">特征空间散点图</h2>
+                <canvas id="scatter-chart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h2 class="chart-title">攻击特征雷达图</h2>
+                <canvas id="radar-chart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h2 class="chart-title">信号聚类分析</h2>
+                <div id="cluster-chart"></div>
+                <div class="legend" id="cluster-legend"></div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>量子通信安全研究实验室 © 2023 | 数据更新时间: <span id="update-time"></span></p>
+        </footer>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // 攻击类型和颜色映射
+        const attackTypes = {
+            'jitter': '抖动攻击',
+            'wavelength': '波长攻击',
+            'calibration': '校准攻击',
+            'saturation': '饱和攻击',
+            'faraday': '法拉第镜攻击',
+            'trojan': '特洛伊木马攻击'
+        };
+        
+        const attackColors = {
+            'jitter': '#e74c3c',
+            'wavelength': '#3498db',
+            'calibration': '#2ecc71',
+            'saturation': '#f39c12',
+            'faraday': '#9b59b6',
+            'trojan': '#1abc9c'
+        };
+        
+        // 生成模拟数据
+        function generateData() {
+            const now = new Date();
+            document.getElementById('update-time').textContent = now.toLocaleString();
+            
+            // 波形数据
+            const waveformData = {};
+            Object.keys(attackTypes).forEach(type => {
+                const data = [];
+                for (let i = 0; i < 100; i++) {
+                    let value;
+                    switch(type) {
+                        case 'jitter':
+                            value = Math.sin(i / 5) + (Math.random() - 0.5) * 0.8;
+                            break;
+                        case 'wavelength':
+                            value = Math.sin(i / 3) * 0.7 + Math.sin(i / 10) * 0.3;
+                            break;
+                        case 'calibration':
+                            value = Math.sin(i / 7) * 0.5 + (i % 20 < 10 ? 0.3 : -0.3);
+                            break;
+                        case 'saturation':
+                            value = Math.min(1, Math.max(-1, Math.sin(i / 4) * 1.5));
+                            break;
+                        case 'faraday':
+                            value = Math.sin(i / 6) * 0.6 + Math.sin(i / 15) * 0.4;
+                            break;
+                        case 'trojan':
+                            value = Math.sin(i / 8) * 0.4 + (Math.random() - 0.5) * 0.2;
+                            break;
+                    }
+                    data.push(value);
+                }
+                waveformData[type] = data;
+            });
+            
+            // 特征数据
+            const featureData = {};
+            Object.keys(attackTypes).forEach(type => {
+                const features = {};
+                ['entropy', 'variance', 'skewness', 'kurtosis', 'peak', 'mean'].forEach(feat => {
+                    features[feat] = Math.random() * 5 + (type.charCodeAt(0) % 3);
+                });
+                featureData[type] = features;
+            });
+            
+            // 聚类数据
+            const clusterData = [];
+            Object.keys(attackTypes).forEach(type => {
+                for (let i = 0; i < 15; i++) {
+                    const x = (Math.random() - 0.5) * 2 + (type.charCodeAt(0) % 3) * 1.5;
+                    const y = (Math.random() - 0.5) * 2 + (type.charCodeAt(1) % 3) * 1.5;
+                    clusterData.push({x, y, type});
+                }
+            });
+            
+            return {waveformData, featureData, clusterData};
+        }
+        
+        // 绘制波形图
+        function drawWaveformChart(data) {
+            const container = d3.select('#waveform-chart');
+            container.html('');
+            
+            const margin = {top: 20, right: 30, bottom: 40, left: 50};
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+            const height = 300 - margin.top - margin.bottom;
+            
+            const svg = container.append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            const x = d3.scaleLinear()
+                .domain([0, 99])
+                .range([0, width]);
+            
+            const y = d3.scaleLinear()
+                .domain([-2, 2])
+                .range([height, 0]);
+            
+            // 添加坐标轴
+            svg.append('g')
+                .attr('class', 'x-axis')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).ticks(5));
+            
+            svg.append('g')
+                .attr('class', 'y-axis')
+                .call(d3.axisLeft(y).ticks(5));
+            
+            // 添加网格线
+            svg.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).ticks(10).tickSize(-height).tickFormat(''));
+            
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y).ticks(5).tickSize(-width).tickFormat(''));
+            
+            // 绘制每种攻击的波形
+            Object.keys(data.waveformData).forEach(type => {
+                const line = d3.line()
+                    .x((d, i) => x(i))
+                    .y(d => y(d))
+                    .curve(d3.curveBasis);
+                
+                svg.append('path')
+                    .datum(data.waveformData[type])
+                    .attr('fill', 'none')
+                    .attr('stroke', attackColors[type])
+                    .attr('stroke-width', 2)
+                    .attr('d', line);
+            });
+            
+            // 更新图例
+            const legend = d3.select('#waveform-legend');
+            legend.html('');
+            
+            Object.keys(attackTypes).forEach(type => {
+                legend.append('div')
+                    .attr('class', 'legend-item')
+                    .html(`<div class="legend-color" style="background-color:${attackColors[type]}"></div>
+                          <span>${attackTypes[type]}</span>`);
+            });
+            
+            // 添加交互工具提示
+            const tooltip = d3.select('#tooltip');
+            
+            svg.append('rect')
+                .attr('width', width)
+                .attr('height', height)
+                .style('fill', 'none')
+                .style('pointer-events', 'all')
+                .on('mousemove', function(event) {
+                    const mouseX = d3.pointer(event, this)[0];
+                    const index = Math.round(x.invert(mouseX));
+                    
+                    if (index >= 0 && index < 100) {
+                        let tooltipHtml = `<strong>采样点: ${index}</strong><br>`;
+                        Object.keys(data.waveformData).forEach(type => {
+                            tooltipHtml += `${attackTypes[type]}: ${data.waveformData[type][index].toFixed(3)}<br>`;
+                        });
+                        
+                        tooltip.style('left', (event.pageX + 10) + 'px')
+                              .style('top', (event.pageY - 10) + 'px')
+                              .style('opacity', 1)
+                              .html(tooltipHtml);
+                    }
+                })
+                .on('mouseout', function() {
+                    tooltip.style('opacity', 0);
+                });
+        }
+        
+        // 绘制折线图
+        function drawLineChart(data) {
+            const ctx = document.getElementById('line-chart').getContext('2d');
+            
+            if (window.lineChart) {
+                window.lineChart.destroy();
+            }
+            
+            const datasets = Object.keys(data.featureData).map(type => {
+                return {
+                    label: attackTypes[type],
+                    data: Object.values(data.featureData[type]),
+                    borderColor: attackColors[type],
+                    backgroundColor: 'rgba(255, 255, 255, 0)',
+                    borderWidth: 2,
+                    tension: 0.3
+                };
+            });
+            
+            window.lineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Object.keys(data.featureData.jitter),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: false
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'xy'
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'xy'
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+        
+        // 绘制曲线图
+        function drawCurveChart(data) {
+            const ctx = document.getElementById('curve-chart').getContext('2d');
+            
+            if (window.curveChart) {
+                window.curveChart.destroy();
+            }
+            
+            const datasets = Object.keys(data.featureData).map(type => {
+                return {
+                    label: attackTypes[type],
+                    data: Object.values(data.featureData[type]),
+                    borderColor: attackColors[type],
+                    backgroundColor: 'rgba(255, 255, 255, 0)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true
+                };
+            });
+            
+            window.curveChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Object.keys(data.featureData.jitter),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: false
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'xy'
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'xy'
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+        
+        // 绘制散点图
+        function drawScatterChart(data) {
+            const ctx = document.getElementById('scatter-chart').getContext('2d');
+            
+            if (window.scatterChart) {
+                window.scatterChart.destroy();
+            }
+            
+            const scatterData = {};
+            Object.keys(attackTypes).forEach(type => {
+                scatterData[type] = {
+                    label: attackTypes[type],
+                    data: [],
+                    backgroundColor: attackColors[type],
+                    borderColor: attackColors[type],
+                    borderWidth: 1
+                };
+            });
+            
+            Object.keys(data.featureData).forEach(type => {
+                const features = data.featureData[type];
+                scatterData[type].data.push({
+                    x: features.entropy,
+                    y: features.variance
+                });
+                scatterData[type].data.push({
+                    x: features.skewness,
+                    y: features.kurtosis
+                });
+                scatterData[type].data.push({
+                    x: features.peak,
+                    y: features.mean
+                });
+            });
+            
+            window.scatterChart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: Object.values(scatterData)
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: false
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'xy'
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'xy'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return attackTypes[Object.keys(attackTypes)[context.datasetIndex]];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '特征值'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '特征值'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 绘制雷达图
+        function drawRadarChart(data) {
+            const ctx = document.getElementById('radar-chart').getContext('2d');
+            
+            if (window.radarChart) {
+                window.radarChart.destroy();
+            }
+            
+            const datasets = Object.keys(data.featureData).map(type => {
+                return {
+                    label: attackTypes[type],
+                    data: Object.values(data.featureData[type]),
+                    backgroundColor: `${attackColors[type]}40`,
+                    borderColor: attackColors[type],
+                    borderWidth: 2,
+                    pointBackgroundColor: attackColors[type],
+                    pointRadius: 4
+                };
+            });
+            
+            window.radarChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: Object.keys(data.featureData.jitter),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        r: {
+                            angleLines: {
+                                display: true
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 8
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 绘制聚类图
+        function drawClusterChart(data) {
+            const container = d3.select('#cluster-chart');
+            container.html('');
+            
+            const margin = {top: 20, right: 30, bottom: 40, left: 50};
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+            const height = 300 - margin.top - margin.bottom;
+            
+            const svg = container.append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // 计算数据范围
+            const xExtent = d3.extent(data.clusterData, d => d.x);
+            const yExtent = d3.extent(data.clusterData, d => d.y);
+            
+            const x = d3.scaleLinear()
+                .domain([xExtent[0] - 1, xExtent[1] + 1])
+                .range([0, width]);
+            
+            const y = d3.scaleLinear()
+                .domain([yExtent[0] - 1, yExtent[1] + 1])
+                .range([height, 0]);
+            
+            // 添加坐标轴
+            svg.append('g')
+                .attr('class', 'x-axis')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).ticks(5));
+            
+            svg.append('g')
+                .attr('class', 'y-axis')
+                .call(d3.axisLeft(y).ticks(5));
+            
+            // 添加网格线
+            svg.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).ticks(10).tickSize(-height).tickFormat(''));
+            
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y).ticks(5).tickSize(-width).tickFormat(''));
+            
+            // 绘制聚类点
+            svg.selectAll('.cluster-point')
+                .data(data.clusterData)
+                .enter()
+                .append('circle')
+                .attr('class', 'cluster-point')
+                .attr('cx', d => x(d.x))
+                .attr('cy', d => y(d.y))
+                .attr('r', 6)
+                .attr('fill', d => attackColors[d.type])
+                .attr('stroke', 'white')
+                .attr('stroke-width', 1)
+                .on('mouseover', function(event, d) {
+                    d3.select(this).attr('r', 8);
+                    
+                    const tooltip = d3.select('#tooltip');
+                    tooltip.style('left', (event.pageX + 10) + 'px')
+                          .style('top', (event.pageY - 10) + 'px')
+                          .style('opacity', 1)
+                          .html(`<strong>${attackTypes[d.type]}</strong><br>
+                                X: ${d.x.toFixed(2)}<br>
+                                Y: ${d.y.toFixed(2)}`);
+                })
+                .on('mouseout', function() {
+                    d3.select(this).attr('r', 6);
+                    d3.select('#tooltip').style('opacity', 0);
+                });
+            
+            // 更新图例
+            const legend = d3.select('#cluster-legend');
+            legend.html('');
+            
+            Object.keys(attackTypes).forEach(type => {
+                legend.append('div')
+                    .attr('class', 'legend-item')
+                    .html(`<div class="legend-color" style="background-color:${attackColors[type]}"></div>
+                          <span>${attackTypes[type]}</span>`);
+            });
+        }
+        
+        // 初始化所有图表
+        function initCharts() {
+            const data = generateData();
+            drawWaveformChart(data);
+            drawLineChart(data);
+            drawCurveChart(data);
+            drawScatterChart(data);
+            drawRadarChart(data);
+            drawClusterChart(data);
+        }
+        
+        // 页面加载时初始化图表
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            
+            // 添加刷新按钮事件
+            document.getElementById('refresh-btn').addEventListener('click', function() {
+                initCharts();
+            });
+            
+            // 添加数据集选择事件
+            document.getElementById('data-select').addEventListener('change', function() {
+                initCharts();
+            });
+            
+            // 添加窗口大小变化事件
+            window.addEventListener('resize', function() {
+                initCharts();
+            });
+        });
+    </script>
+</body>
+</html>
